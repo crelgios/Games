@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Retro Arcade Menu</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  body {
+    margin: 0;
+    background: black;
+    color: #33f;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 14px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    height: 100vh;
+    padding-top: 40px;
+    user-select: none;
+  }
+
+  #menu {
+    width: 360px;
+    white-space: pre;
+  }
+
+  #title {
+    color: #66f;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 16px;
+  }
+
+  #instruction {
+    color: #f0f;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 10px;
+  }
+
+  .menu-item {
+    color: #999;
+    line-height: 1.4em;
+    cursor: pointer;
+  }
+
+  .menu-item.selected {
+    color: #fff;
+  }
+
+  .arrow {
+    display: inline-block;
+    width: 16px;
+    color: #0ff;
+    animation: blink 1s steps(2, start) infinite;
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+  <div id="menu">
+    <div id="title">3 IN 1</div>
+    <div id="instruction">PUSH SEL OR START BUTTON</div>
+    <br />
+    <div id="game-list"></div>
+  </div>
+
+<script>
+  const games = [
+    '01. CAR WARS',
+    '02. SHOCKWAVE X',
+    '03. TENIS I',
+  ];
+
+  const gameLinks = [
+    './game.html',
+    './Shockwavex.html',
+    './Tennis.html',
+  ];
+
+  const gameListEl = document.getElementById('game-list');
+  let selectedIndex = 0;
+
+  function renderMenu() {
+    gameListEl.innerHTML = '';
+    games.forEach((game, i) => {
+      const div = document.createElement('div');
+      div.className = 'menu-item' + (i === selectedIndex ? ' selected' : '');
+      div.innerHTML = (i === selectedIndex ? '<span class="arrow">></span> ' : '&nbsp;&nbsp;&nbsp; ') + game;
+
+      // Click to open game
+      div.onclick = () => {
+        selectedIndex = i;
+        renderMenu();
+        selectGame();
+      };
+
+      gameListEl.appendChild(div);
+    });
+  }
+
+  function moveSelection(dir) {
+    selectedIndex = (selectedIndex + dir + games.length) % games.length;
+    renderMenu();
+  }
+
+  function selectGame() {
+    const url = gameLinks[selectedIndex];
+    if (url) {
+      window.location.assign(url); // safer than href
+    } else {
+      alert(`No URL found for: ${games[selectedIndex]}`);
+    }
+  }
+
+  // Keyboard navigation
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp') {
+      moveSelection(-1);
+      e.preventDefault();
+    } else if (e.key === 'ArrowDown') {
+      moveSelection(1);
+      e.preventDefault();
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      selectGame();
+      e.preventDefault();
+    }
+  });
+
+  renderMenu();
+</script>
+</body>
+</html>

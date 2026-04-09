@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tennis Game - Mobile & Desktop</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #228B22;
+    font-family: sans-serif;
+  }
+  canvas {
+    display: block;
+    margin: 0 auto;
+    background: #228B22;
+    border: 5px solid #fff;
+    touch-action: none; /* prevent scrolling on mobile */
+  }
+  .score {
+    position: absolute;
+    color: #fff;
+    font-size: 24px;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+<div class="score" id="score">Player: 0 | CPU: 0</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Player and CPU paddles
+const paddleWidth = 10, paddleHeight = 80;
+const player = { x: 20, y: canvas.height/2 - 40, width: paddleWidth, height: paddleHeight, speed: 6 };
+const cpu = { x: canvas.width - 30, y: canvas.height/2 - 40, width: paddleWidth, height: paddleHeight, speed: 4 };
+
+// Ball
+const ball = { x: canvas.width/2, y: canvas.height/2, radius: 8, speedX: 5, speedY: 3 };
+
+// Score
+let playerScore = 0;
+let cpuScore = 0;
+
+// Controls
+let pointerY = null; // stores touch or mouse Y
+
+// Mobile touch
+canvas.addEventListener('touchstart', e => {
+  pointerY = e.touches[0].clientY - canvas.getBoundingClientRect().top;
+});
+canvas.addEventListener('touchmove', e => {
+  pointerY = e.touches[0].clientY - canvas.getBoundingClientRect().top;
+});
+canvas.addEventListener('touchend', e => pointerY = null);
+
+// Desktop mouse
+canvas.addEventListener('mousedown', e => {
+  pointerY = e.clientY - canvas.getBoundingClientRect().top;
+});
+canvas.addEventListener('mousemove', e => {
+  if(pointerY !== null) pointerY = e.clientY - canvas.getBoundingClientRect().top;
+});
+canvas.addEventListener('mouseup', e => pointerY = null);
+
+// Game loop
+function update() {
+  // Move player
+  if(pointerY !== null) {
+    player.y = pointerY - player.height/2;
+    if(player.y < 0) player.y = 0;
+    if(player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+  }
+
+  // Move CPU
+  if(ball.y < cpu.y + cpu.height/2) cpu.y -= cpu.speed;
+  else cpu.y += cpu.speed;
+  if(cpu.y < 0) cpu.y = 0;
+  if(cpu.y + cpu.height > canvas.height) cpu.y = canvas.height - cpu.height;
+
+  // Move ball
+  ball.x += ball.speedX;
+  ball.y += ball.speedY;
+
+  // Ball collision with top/bottom
+  if(ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) ball.speedY *= -1;
+
+  // Ball collision with paddles
+  if(ball.x - ball.radius < player.x + player.width &&
+     ball.y > player.y && ball.y < player.y + player.height) {
+    ball.speedX *= -1;
+    ball.x = player.x + player.width + ball.radius;
+  }
+  if(ball.x + ball.radius > cpu.x &&
+     ball.y > cpu.y && ball.y < cpu.y + cpu.height) {
+    ball.speedX *= -1;
+    ball.x = cpu.x - ball.radius;
+  }
+
+  // Score
+  if(ball.x < 0) { cpuScore++; resetBall(); }
+  if(ball.x > canvas.width) { playerScore++; resetBall(); }
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+// Reset ball
+function resetBall() {
+  ball.x = canvas.width/2;
+  ball.y = canvas.height/2;
+  ball.speedX = -ball.speedX;
+  ball.speedY = 3 * (Math.random() > 0.5 ? 1 : -1);
+}
+
+// Draw everything
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // Draw middle line
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(canvas.width/2 - 2, 0, 4, canvas.height);
+
+  // Draw paddles
+  ctx.fillStyle = 'white';
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+  ctx.fillRect(cpu.x, cpu.y, cpu.width, cpu.height);
+
+  // Draw ball
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+  ctx.closePath();
+
+  // Update score
+  document.getElementById('score').textContent = `Player: ${playerScore} | CPU: ${cpuScore}`;
+}
+
+// Start
+update();
+</script>
+</body>
+</html>
