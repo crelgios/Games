@@ -2,86 +2,265 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Retro Arcade Menu</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>3 in 1 Retro Arcade Menu</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-  body {
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
     margin: 0;
-    background: black;
-    color: #33f;
+    width: 100%;
+    min-height: 100%;
+    overflow: hidden;
+    background: #020008;
+    color: #fff;
     font-family: 'Press Start 2P', monospace;
-    font-size: 14px;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  body {
     display: flex;
     justify-content: center;
-    align-items: flex-start;
+    align-items: center;
+    padding: 18px;
+  }
+
+  #bgCanvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
     height: 100vh;
-    padding-top: 40px;
-    user-select: none;
+    z-index: 0;
+    background:
+      radial-gradient(circle at 50% 28%, rgba(0,255,255,.17), transparent 28%),
+      radial-gradient(circle at 80% 15%, rgba(255,0,255,.15), transparent 24%),
+      linear-gradient(180deg, #080018 0%, #05000d 45%, #000 100%);
+  }
+
+  .vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(circle, transparent 42%, rgba(0,0,0,.75) 100%);
+  }
+
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    opacity: .2;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,.08),
+      rgba(255,255,255,.08) 1px,
+      transparent 1px,
+      transparent 5px
+    );
+    animation: scanMove 7s linear infinite;
+  }
+
+  @keyframes scanMove {
+    from { transform: translateY(0); }
+    to { transform: translateY(20px); }
   }
 
   #menu {
-    width: 360px;
-    white-space: pre;
+    position: relative;
+    z-index: 5;
+    width: min(92vw, 430px);
+    padding: 28px 20px 22px;
+    border: 2px solid rgba(0,255,255,.85);
+    border-radius: 22px;
+    text-align: center;
+    background: linear-gradient(180deg, rgba(4,4,22,.82), rgba(0,0,0,.76));
+    box-shadow:
+      0 0 18px rgba(0,255,255,.7),
+      inset 0 0 22px rgba(255,0,255,.25),
+      0 0 55px rgba(255,0,255,.28);
+    backdrop-filter: blur(6px);
+  }
+
+  #menu::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 22px;
+    background: linear-gradient(120deg, #00ffff, #ff00ff, #ffff00, #00ffff);
+    z-index: -1;
+    filter: blur(14px);
+    opacity: .26;
+    animation: glowPulse 2.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes glowPulse {
+    from { opacity: .18; transform: scale(.99); }
+    to { opacity: .38; transform: scale(1.01); }
   }
 
   #title {
-    color: #66f;
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 16px;
+    margin: 0 0 8px;
+    color: #fff;
+    font-size: clamp(22px, 7vw, 34px);
+    line-height: 1.3;
+    letter-spacing: 2px;
+    text-shadow:
+      0 0 6px #00ffff,
+      0 0 14px #00ffff,
+      0 0 28px #ff00ff;
+    animation: titleFlicker 3s infinite;
+  }
+
+  @keyframes titleFlicker {
+    0%, 96%, 100% { opacity: 1; }
+    97% { opacity: .55; }
+    98% { opacity: 1; }
+    99% { opacity: .78; }
+  }
+
+  #subtitle {
+    margin-bottom: 18px;
+    color: #ffff66;
+    font-size: clamp(9px, 2.6vw, 12px);
+    line-height: 1.8;
+    text-shadow: 0 0 8px #ffff00;
   }
 
   #instruction {
-    color: #f0f;
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 10px;
+    margin-bottom: 18px;
+    color: #ff55ff;
+    font-size: clamp(8px, 2.4vw, 10px);
+    line-height: 1.7;
+    text-shadow: 0 0 8px #ff00ff;
+    animation: blinkText 1.25s steps(2, start) infinite;
+  }
+
+  @keyframes blinkText {
+    0%, 55% { opacity: 1; }
+    56%, 100% { opacity: .38; }
+  }
+
+  #game-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .menu-item {
-    color: #999;
-    line-height: 1.4em;
+    position: relative;
+    width: 100%;
+    border: 2px solid rgba(0,255,255,.55);
+    border-radius: 14px;
+    padding: 15px 12px;
+    color: #d7ffff;
+    background: rgba(0,0,0,.42);
     cursor: pointer;
+    font-size: clamp(10px, 3vw, 13px);
+    line-height: 1.55;
+    text-align: left;
+    overflow: hidden;
+    box-shadow: inset 0 0 12px rgba(0,255,255,.15), 0 0 12px rgba(0,255,255,.16);
+    transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
   }
 
-  .menu-item.selected {
-    color: #fff;
+  .menu-item::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -80%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+    transform: skewX(-25deg);
+  }
+
+  .menu-item.selected,
+  .menu-item:active,
+  .menu-item:hover {
+    color: #000;
+    background: linear-gradient(90deg, #00ffff, #66ffcc);
+    border-color: #fff;
+    box-shadow: 0 0 16px #00ffff, 0 0 34px rgba(255,0,255,.65);
+    transform: translateY(-2px) scale(1.015);
+  }
+
+  .menu-item.selected::after,
+  .menu-item:hover::after {
+    animation: shine 1.3s ease-in-out infinite;
+  }
+
+  @keyframes shine {
+    from { left: -80%; }
+    to { left: 130%; }
   }
 
   .arrow {
     display: inline-block;
-    width: 16px;
-    color: #0ff;
-    animation: blink 1s steps(2, start) infinite;
+    width: 22px;
+    color: #ff00ff;
+    text-shadow: 0 0 8px #ff00ff;
+    animation: arrowPulse .7s steps(2, start) infinite;
   }
 
-  @keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
+  @keyframes arrowPulse {
+    0%, 55% { opacity: 1; transform: translateX(0); }
+    56%, 100% { opacity: .25; transform: translateX(4px); }
+  }
+
+  .hint {
+    margin-top: 18px;
+    color: rgba(255,255,255,.72);
+    font-size: clamp(7px, 2.2vw, 9px);
+    line-height: 1.9;
+  }
+
+  footer {
+    margin-top: 14px;
+    color: rgba(255,255,255,.5);
+    font-size: 8px;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 420px) {
+    body { padding: 12px; align-items: center; }
+    #menu { padding: 24px 14px 18px; border-radius: 18px; }
+    .menu-item { padding: 14px 10px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 </style>
 </head>
 <body>
-  <div id="menu">
-    <div id="title">3 IN 1</div>
-    <div id="instruction">PUSH SEL OR START BUTTON</div>
-    <br />
-    <div id="game-list"></div>
-  </div>
+<canvas id="bgCanvas"></canvas>
+<div class="vignette"></div>
+<div class="scanlines"></div>
+
+<main id="menu" aria-label="Game menu">
+  <h1 id="title">3 IN 1</h1>
+  <div id="subtitle">RETRO ARCADE COLLECTION</div>
+  <div id="instruction">TAP GAME OR PRESS ENTER</div>
+  <div id="game-list"></div>
+  <div class="hint">▲ ▼ SELECT &nbsp; | &nbsp; ENTER START</div>
+  <footer>© ALL COPYRIGHT RESERVED</footer>
+</main>
 
 <script>
   const games = [
     '01. CAR WARS',
     '02. SHOCKWAVE X',
-    '03. TENIS I',
+    '03. TENNIS'
   ];
 
   const gameLinks = [
     './game.html',
     './Shockwavex.html',
-    './Tennis.html',
+    './Tennis.html'
   ];
 
   const gameListEl = document.getElementById('game-list');
@@ -90,17 +269,16 @@
   function renderMenu() {
     gameListEl.innerHTML = '';
     games.forEach((game, i) => {
-      const div = document.createElement('div');
+      const div = document.createElement('button');
+      div.type = 'button';
       div.className = 'menu-item' + (i === selectedIndex ? ' selected' : '');
-      div.innerHTML = (i === selectedIndex ? '<span class="arrow">></span> ' : '&nbsp;&nbsp;&nbsp; ') + game;
-
-      // Click to open game
+      div.innerHTML = (i === selectedIndex ? '<span class="arrow">▶</span>' : '<span class="arrow"> </span>') + game;
+      div.setAttribute('aria-label', 'Open ' + game);
       div.onclick = () => {
         selectedIndex = i;
         renderMenu();
-        selectGame();
+        setTimeout(selectGame, 120);
       };
-
       gameListEl.appendChild(div);
     });
   }
@@ -112,14 +290,9 @@
 
   function selectGame() {
     const url = gameLinks[selectedIndex];
-    if (url) {
-      window.location.assign(url); // safer than href
-    } else {
-      alert(`No URL found for: ${games[selectedIndex]}`);
-    }
+    if (url) window.location.assign(url);
   }
 
-  // Keyboard navigation
   window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp') {
       moveSelection(-1);
@@ -134,6 +307,109 @@
   });
 
   renderMenu();
+
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+  let w, h, gridOffset = 0;
+  const stars = [];
+  const particles = [];
+
+  function resize() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+    stars.length = 0;
+    const count = Math.min(110, Math.floor((w * h) / 9000));
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        size: Math.random() * 1.8 + .5,
+        speed: Math.random() * .5 + .15,
+        alpha: Math.random() * .8 + .2
+      });
+    }
+  }
+
+  function addParticle(x, y) {
+    if (particles.length > 70) particles.shift();
+    particles.push({
+      x, y,
+      vx: (Math.random() - .5) * 2.8,
+      vy: (Math.random() - .5) * 2.8,
+      life: 35,
+      size: Math.random() * 3 + 1.5,
+      color: Math.random() > .5 ? '#00ffff' : '#ff00ff'
+    });
+  }
+
+  window.addEventListener('pointermove', e => addParticle(e.clientX, e.clientY), { passive: true });
+  window.addEventListener('pointerdown', e => {
+    for (let i = 0; i < 14; i++) addParticle(e.clientX, e.clientY);
+  }, { passive: true });
+
+  function drawBackground() {
+    ctx.clearRect(0, 0, w, h);
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, h);
+    gradient.addColorStop(0, '#070018');
+    gradient.addColorStop(.58, '#05000a');
+    gradient.addColorStop(1, '#000000');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+
+    for (const s of stars) {
+      s.y += s.speed;
+      if (s.y > h) { s.y = 0; s.x = Math.random() * w; }
+      ctx.globalAlpha = s.alpha;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(s.x, s.y, s.size, s.size);
+    }
+    ctx.globalAlpha = 1;
+
+    const horizon = h * 0.54;
+    ctx.strokeStyle = 'rgba(0,255,255,.22)';
+    ctx.lineWidth = 1;
+    gridOffset = (gridOffset + 1.2) % 40;
+
+    for (let y = horizon + gridOffset; y < h + 40; y += 40) {
+      const t = (y - horizon) / (h - horizon);
+      const yy = horizon + t * t * (h - horizon);
+      ctx.beginPath();
+      ctx.moveTo(0, yy);
+      ctx.lineTo(w, yy);
+      ctx.stroke();
+    }
+
+    for (let i = -10; i <= 10; i++) {
+      ctx.beginPath();
+      ctx.moveTo(w / 2, horizon);
+      ctx.lineTo(w / 2 + i * w * .12, h);
+      ctx.stroke();
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      ctx.globalAlpha = Math.max(p.life / 35, 0);
+      ctx.shadowBlur = 16;
+      ctx.shadowColor = p.color;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    requestAnimationFrame(drawBackground);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  drawBackground();
 </script>
 </body>
 </html>
