@@ -1,233 +1,427 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Neon Racer: Smooth Shooter</title>
   <style>
-    body { margin:0; background:black; overflow:hidden; font-family:Arial; }
-    canvas { display:block; margin:auto; background:#111; }
-    #ui { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:white; text-align:center; }
-    #gameOverScreen { display:none; text-align:center; margin-top:50px; color:white; }
-    button { padding:10px 20px; font-size:18px; margin-top:10px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at center, #101633 0%, #050711 50%, #000 100%);
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      color: white;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: min(100vw, 430px);
+      height: 100vh;
+      margin: 0 auto;
+      background: #080a12;
+      touch-action: none;
+    }
+    #ui {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(0,255,255,.35);
+      box-shadow: 0 0 18px rgba(0,255,255,.25);
+      border-radius: 14px;
+      padding: 8px 14px;
+      text-align: center;
+      font-size: 15px;
+      backdrop-filter: blur(8px);
+      white-space: nowrap;
+    }
+    .screen {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 22px;
+      background: rgba(0,0,0,.72);
+      text-align: center;
+    }
+    .panel {
+      width: min(92vw, 360px);
+      padding: 24px;
+      border-radius: 24px;
+      border: 1px solid rgba(0,255,255,.45);
+      background: linear-gradient(145deg, rgba(8,14,30,.96), rgba(2,4,10,.96));
+      box-shadow: 0 0 38px rgba(0,255,255,.2), inset 0 0 20px rgba(0,255,255,.05);
+    }
+    h1, h2 { margin: 0 0 12px; text-shadow: 0 0 16px cyan; }
+    p { line-height: 1.45; color: #dff; }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 24px;
+      margin: 8px;
+      font-size: 17px;
+      font-weight: bold;
+      color: #001114;
+      background: linear-gradient(90deg, cyan, lime);
+      box-shadow: 0 0 20px rgba(0,255,255,.45);
+      cursor: pointer;
+    }
+    #pauseBtn {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 6;
+      padding: 8px 13px;
+      font-size: 14px;
+      display: none;
+    }
+    .hidden { display: none !important; }
+    .hint { font-size: 13px; opacity: .85; }
   </style>
 </head>
 <body>
-<div id="ui">
-  <p>Score: <span id="score">0</span> | Coins: <span id="coins">0</span> | High Score: <span id="highScore">0</span></p>
-</div>
+  <div id="ui">Score: <span id="score">0</span> | Coins: <span id="coins">0</span> | Best: <span id="highScore">0</span></div>
+  <button id="pauseBtn">Pause</button>
+  <canvas id="game"></canvas>
 
-<canvas id="game" width="300" height="500"></canvas>
+  <div id="startScreen" class="screen">
+    <div class="panel">
+      <h1>🏎️ Neon Racer</h1>
+      <p>Dodge cars, shoot enemies, collect coins, and survive as speed increases.</p>
+      <p class="hint">Mobile: drag left/right or tap sides. Desktop: Arrow keys + Space.</p>
+      <button id="startBtn">Start Game</button>
+    </div>
+  </div>
 
-<div id="gameOverScreen">
-  <h2>💀 Game Over</h2>
-  <p>Score: <span id="finalScore">0</span></p>
-  <button onclick="restartGame()">Restart</button>
-</div>
+  <div id="pauseScreen" class="screen hidden">
+    <div class="panel">
+      <h2>Paused</h2>
+      <button id="resumeBtn">Resume</button>
+      <button id="restartPauseBtn">Restart</button>
+    </div>
+  </div>
+
+  <div id="gameOverScreen" class="screen hidden">
+    <div class="panel">
+      <h2>💀 Game Over</h2>
+      <p>Score: <b id="finalScore">0</b></p>
+      <p>Coins: <b id="finalCoins">0</b></p>
+      <p>Best Score: <b id="finalBest">0</b></p>
+      <button id="restartBtn">Play Again</button>
+    </div>
+  </div>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const uiScore = document.getElementById('score');
+const uiCoins = document.getElementById('coins');
+const uiHigh = document.getElementById('highScore');
+const startScreen = document.getElementById('startScreen');
+const pauseScreen = document.getElementById('pauseScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+const pauseBtn = document.getElementById('pauseBtn');
 
-const lanes = [75, 150, 225];
-let playerLane = 1;
-let playerX = lanes[playerLane];
-let targetLane = playerLane;
-let cars = [];
-let bullets = [];
-let particles = [];
-let score = 0, coins = 0, highScore = 0;
-let speed = 4;
-let gameRunning = true;
-let roadOffset = 0;
-let lastShotTime = 0;
+let W = 300, H = 500, scale = 1;
+let lanes = [];
+let player, cars, bullets, coinsList, particles;
+let score = 0, coins = 0, speed = 4, roadOffset = 0;
+let gameState = 'menu';
+let lastTime = 0, spawnTimer = 0, coinTimer = 0, lastShotTime = 0;
+let highScore = Number(localStorage.getItem('neonRacerHighScore') || 0);
+let savedCoins = Number(localStorage.getItem('neonRacerCoins') || 0);
 
-// Initialize game
-function initGame(){
-  playerLane = 1;
-  targetLane = 1;
-  playerX = lanes[playerLane];
+function resizeCanvas(){
+  const maxWidth = Math.min(window.innerWidth, 430);
+  canvas.width = Math.floor(maxWidth * devicePixelRatio);
+  canvas.height = Math.floor(window.innerHeight * devicePixelRatio);
+  canvas.style.width = maxWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  W = maxWidth;
+  H = window.innerHeight;
+  lanes = [W * 0.28, W * 0.5, W * 0.72];
+  if(player){
+    player.x = lanes[player.lane];
+    player.y = H - 92;
+  }
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function resetGame(){
+  player = { lane: 1, targetLane: 1, x: lanes[1], y: H - 92, w: 34, h: 58 };
   cars = [];
   bullets = [];
+  coinsList = [];
   particles = [];
   score = 0;
-  coins = 0;
+  coins = savedCoins;
   speed = 4;
-  gameRunning = true;
   roadOffset = 0;
-  document.getElementById("gameOverScreen").style.display = "none";
+  spawnTimer = 0;
+  coinTimer = 0;
+  lastShotTime = 0;
+  lastTime = 0;
+  updateUI();
 }
 
-// Smooth lane movement
-function updatePlayer(deltaTime){
-  let targetX = lanes[targetLane];
-  playerX += (targetX - playerX) * 0.2; // smooth slide
+function startGame(){
+  resetGame();
+  gameState = 'playing';
+  startScreen.classList.add('hidden');
+  pauseScreen.classList.add('hidden');
+  gameOverScreen.classList.add('hidden');
+  pauseBtn.style.display = 'block';
 }
 
-// Draw player with neon glow
-function drawPlayer(){
-  ctx.save();
-  ctx.shadowColor = "lime";
-  ctx.shadowBlur = 15;
-  ctx.fillStyle = "lime";
-  ctx.fillRect(playerX-15, 420-25, 30, 50);
-  ctx.fillStyle = "#0f0";
-  ctx.fillRect(playerX-10, 420-35, 20, 10);
-  ctx.restore();
-}
-
-// Draw enemy
-function drawEnemy(car){
-  ctx.fillStyle = car.color;
-  ctx.fillRect(lanes[car.lane]-15, car.y-25, 30,50);
-}
-
-// Draw bullet
-function drawBullet(b){
-  ctx.save();
-  ctx.shadowColor="yellow";
-  ctx.shadowBlur=10;
-  ctx.fillStyle="yellow";
-  ctx.fillRect(b.x-3, b.y-10, 6, 10);
-  ctx.restore();
-}
-
-// Spawn enemies
-function spawnCar(){
-  if(!gameRunning) return;
-  const lane = Math.floor(Math.random()*3);
-  const colors=["red","orange","magenta","cyan"];
-  const color = colors[Math.floor(Math.random()*colors.length)];
-  cars.push({lane: lane, y:-60, color: color, destroyed:false});
-}
-
-// Explosion particles
-function createExplosion(x, y){
-  for(let i=0;i<15;i++){
-    particles.push({
-      x:x,
-      y:y,
-      vx:(Math.random()-0.5)*4,
-      vy:(Math.random()-0.5)*4,
-      life:30+Math.random()*20,
-      color:"orange"
-    });
+function togglePause(){
+  if(gameState === 'playing'){
+    gameState = 'paused';
+    pauseScreen.classList.remove('hidden');
+    pauseBtn.textContent = 'Resume';
+  } else if(gameState === 'paused'){
+    gameState = 'playing';
+    pauseScreen.classList.add('hidden');
+    pauseBtn.textContent = 'Pause';
+    lastTime = 0;
   }
-}
-
-// Draw road with moving stripes
-function drawRoad(){
-  ctx.fillStyle="#222";
-  ctx.fillRect(50,0,200,500);
-  ctx.strokeStyle="white";
-  ctx.lineWidth=2;
-  ctx.setLineDash([20,20]);
-  ctx.beginPath();
-  for(let y=-20;y<500;y+=40){
-    ctx.moveTo(100, y + roadOffset);
-    ctx.lineTo(100, y + 20 + roadOffset);
-    ctx.moveTo(200, y + roadOffset);
-    ctx.lineTo(200, y + 20 + roadOffset);
-  }
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-// Controls
-document.addEventListener("keydown",e=>{
-  if(!gameRunning) return;
-  if(e.key==="ArrowLeft") targetLane = Math.max(0,targetLane-1);
-  if(e.key==="ArrowRight") targetLane = Math.min(2,targetLane+1);
-  if(e.key===" ") shootBullet();
-});
-canvas.addEventListener("click",e=>{
-  if(!gameRunning) return;
-  if(e.offsetX < canvas.width/2) targetLane = Math.max(0,targetLane-1);
-  else targetLane = Math.min(2,targetLane+1);
-  shootBullet();
-});
-
-// Shoot bullet
-function shootBullet(){
-  const now = Date.now();
-  if(now - lastShotTime < 250) return; // cooldown
-  bullets.push({ x: playerX, y: 400 }); // spawn at current playerX
-  lastShotTime = now;
-}
-
-// Main loop
-let lastTime = 0;
-function update(timestamp){
-  if(!lastTime) lastTime=timestamp;
-  const deltaTime = timestamp - lastTime;
-  lastTime = timestamp;
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // Road animation
-  roadOffset += speed;
-  if(roadOffset>40) roadOffset=0;
-  drawRoad();
-
-  updatePlayer(deltaTime);
-  drawPlayer();
-
-  // Bullets
-  bullets.forEach(b=>{b.y-=10; drawBullet(b);});
-  bullets = bullets.filter(b=>b.y>-10);
-
-  // Enemies
-  cars.forEach(car=>{
-    car.y += speed;
-    if(!car.destroyed) drawEnemy(car);
-
-    // collision with player
-    if(!car.destroyed && car.lane===targetLane && car.y>360 && car.y<460) gameOver();
-
-    // bullet collision
-    bullets.forEach(b=>{
-      if(!car.destroyed && b.x > lanes[car.lane]-15 && b.x < lanes[car.lane]+15 &&
-         b.y > car.y-25 && b.y < car.y+25){
-        car.destroyed=true;
-        createExplosion(lanes[car.lane],car.y);
-        bullets.splice(bullets.indexOf(b),1);
-        score += 50;
-      }
-    });
-  });
-  cars = cars.filter(c=>c.y<600);
-
-  // Particles
-  particles.forEach(p=>{
-    p.x+=p.vx; p.y+=p.vy; p.life--;
-    ctx.fillStyle=p.color;
-    ctx.fillRect(p.x,p.y,3,3);
-  });
-  particles = particles.filter(p=>p.life>0);
-
-  if(gameRunning){
-    score++;
-    speed += 0.0005;
-  }
-
-  // UI
-  document.getElementById("score").innerText = Math.floor(score);
-  document.getElementById("coins").innerText = coins;
-  if(!highScore || score>highScore) highScore=score;
-  document.getElementById("highScore").innerText = highScore;
-
-  requestAnimationFrame(update);
 }
 
 function gameOver(){
-  gameRunning=false;
-  document.getElementById("finalScore").innerText=Math.floor(score);
-  document.getElementById("gameOverScreen").style.display="block";
+  if(gameState !== 'playing') return;
+  gameState = 'gameover';
+  highScore = Math.max(highScore, Math.floor(score));
+  savedCoins = coins;
+  localStorage.setItem('neonRacerHighScore', highScore);
+  localStorage.setItem('neonRacerCoins', savedCoins);
+  document.getElementById('finalScore').textContent = Math.floor(score);
+  document.getElementById('finalCoins').textContent = coins;
+  document.getElementById('finalBest').textContent = highScore;
+  gameOverScreen.classList.remove('hidden');
+  pauseBtn.style.display = 'none';
+  updateUI();
 }
 
-function restartGame(){ initGame(); }
+function updateUI(){
+  uiScore.textContent = Math.floor(score);
+  uiCoins.textContent = coins;
+  uiHigh.textContent = Math.max(highScore, Math.floor(score));
+}
 
-setInterval(spawnCar, 1000);
-initGame();
-requestAnimationFrame(update);
+function moveLane(dir){
+  if(gameState !== 'playing') return;
+  player.targetLane = Math.max(0, Math.min(2, player.targetLane + dir));
+}
+
+function shoot(){
+  if(gameState !== 'playing') return;
+  const now = performance.now();
+  if(now - lastShotTime < 220) return;
+  bullets.push({ x: player.x, y: player.y - 38, w: 6, h: 18 });
+  lastShotTime = now;
+}
+
+function spawnCar(){
+  const lane = Math.floor(Math.random() * 3);
+  const colors = ['#ff2d2d', '#ff9f1c', '#ff00ff', '#00e5ff'];
+  cars.push({ lane, x: lanes[lane], y: -70, w: 34, h: 58, color: colors[Math.floor(Math.random()*colors.length)] });
+}
+
+function spawnCoin(){
+  const lane = Math.floor(Math.random() * 3);
+  coinsList.push({ lane, x: lanes[lane], y: -30, r: 9 });
+}
+
+function explosion(x,y,color='orange'){
+  for(let i=0;i<20;i++){
+    const a = Math.random()*Math.PI*2;
+    const s = Math.random()*4+1;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:35,size:Math.random()*3+2,color});
+  }
+}
+
+function rectHit(a,b){
+  return a.x - a.w/2 < b.x + b.w/2 && a.x + a.w/2 > b.x - b.w/2 && a.y - a.h/2 < b.y + b.h/2 && a.y + a.h/2 > b.y - b.h/2;
+}
+
+function update(dt){
+  if(gameState !== 'playing') return;
+  score += dt * 0.012;
+  speed = Math.min(10, 4 + score / 900);
+  roadOffset = (roadOffset + speed * dt * 0.06) % 44;
+
+  player.x += (lanes[player.targetLane] - player.x) * Math.min(1, dt * 0.012);
+
+  spawnTimer += dt;
+  const spawnEvery = Math.max(430, 1050 - score * 0.45);
+  if(spawnTimer > spawnEvery){ spawnCar(); spawnTimer = 0; }
+
+  coinTimer += dt;
+  if(coinTimer > 1700){ spawnCoin(); coinTimer = 0; }
+
+  bullets.forEach(b => b.y -= dt * 0.7);
+  bullets = bullets.filter(b => b.y > -30);
+
+  cars.forEach(car => car.y += speed * dt * 0.06);
+  coinsList.forEach(c => c.y += speed * dt * 0.06);
+
+  for(let ci = cars.length - 1; ci >= 0; ci--){
+    const car = cars[ci];
+    if(rectHit({x:player.x,y:player.y,w:player.w,h:player.h}, {x:car.x,y:car.y,w:car.w,h:car.h})){
+      explosion(player.x, player.y, 'cyan');
+      gameOver();
+      return;
+    }
+    for(let bi = bullets.length - 1; bi >= 0; bi--){
+      const b = bullets[bi];
+      if(rectHit({x:b.x,y:b.y,w:b.w,h:b.h}, {x:car.x,y:car.y,w:car.w,h:car.h})){
+        explosion(car.x, car.y, car.color);
+        cars.splice(ci,1);
+        bullets.splice(bi,1);
+        score += 50;
+        break;
+      }
+    }
+  }
+
+  for(let i = coinsList.length - 1; i >= 0; i--){
+    const c = coinsList[i];
+    if(Math.abs(c.x - player.x) < 28 && Math.abs(c.y - player.y) < 42){
+      coins++;
+      coinsList.splice(i,1);
+      explosion(c.x,c.y,'gold');
+    }
+  }
+
+  cars = cars.filter(c => c.y < H + 90);
+  coinsList = coinsList.filter(c => c.y < H + 40);
+  particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; });
+  particles = particles.filter(p => p.life > 0);
+  updateUI();
+}
+
+function drawRoad(){
+  const roadX = W * 0.15, roadW = W * 0.7;
+  const grd = ctx.createLinearGradient(roadX,0,roadX+roadW,0);
+  grd.addColorStop(0,'#101010'); grd.addColorStop(.5,'#262626'); grd.addColorStop(1,'#101010');
+  ctx.fillStyle = grd;
+  ctx.fillRect(roadX,0,roadW,H);
+  ctx.strokeStyle = 'rgba(0,255,255,.65)';
+  ctx.lineWidth = 3;
+  ctx.shadowColor = 'cyan';
+  ctx.shadowBlur = 10;
+  ctx.strokeRect(roadX,0,roadW,H);
+  ctx.shadowBlur = 0;
+
+  ctx.strokeStyle = 'rgba(255,255,255,.75)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([22,22]);
+  for(const x of [(lanes[0]+lanes[1])/2, (lanes[1]+lanes[2])/2]){
+    ctx.beginPath();
+    ctx.moveTo(x, -44 + roadOffset);
+    ctx.lineTo(x, H + 44);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+function neonRect(x,y,w,h,color){
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 16;
+  ctx.fillStyle = color;
+  ctx.fillRect(x-w/2,y-h/2,w,h);
+  ctx.fillStyle = 'rgba(255,255,255,.45)';
+  ctx.fillRect(x-w/4,y-h/2+8,w/2,10);
+  ctx.restore();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#050711';
+  ctx.fillRect(0,0,W,H);
+  drawRoad();
+
+  coinsList.forEach(c => {
+    ctx.save();
+    ctx.shadowColor = 'gold'; ctx.shadowBlur = 18;
+    ctx.fillStyle = 'gold';
+    ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  cars.forEach(car => neonRect(car.x, car.y, car.w, car.h, car.color));
+  bullets.forEach(b => neonRect(b.x, b.y, b.w, b.h, 'yellow'));
+  if(player) neonRect(player.x, player.y, player.w, player.h, 'lime');
+
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 35;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 10;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  });
+}
+
+function loop(timestamp){
+  const dt = lastTime ? Math.min(34, timestamp - lastTime) : 16;
+  lastTime = timestamp;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Controls
+window.addEventListener('keydown', e => {
+  if(e.key === 'ArrowLeft') moveLane(-1);
+  if(e.key === 'ArrowRight') moveLane(1);
+  if(e.code === 'Space') shoot();
+  if(e.key.toLowerCase() === 'p') togglePause();
+});
+
+let touchStartX = 0, touchMoved = false;
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  touchStartX = e.clientX;
+  touchMoved = false;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if(gameState !== 'playing') return;
+  const dx = e.clientX - touchStartX;
+  if(Math.abs(dx) > 28){
+    moveLane(dx > 0 ? 1 : -1);
+    touchStartX = e.clientX;
+    touchMoved = true;
+  }
+});
+canvas.addEventListener('pointerup', e => {
+  if(gameState !== 'playing') return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  if(!touchMoved){
+    if(x < rect.width * .36) moveLane(-1);
+    else if(x > rect.width * .64) moveLane(1);
+    else shoot();
+  }
+});
+
+document.getElementById('startBtn').onclick = startGame;
+document.getElementById('restartBtn').onclick = startGame;
+document.getElementById('restartPauseBtn').onclick = startGame;
+document.getElementById('resumeBtn').onclick = togglePause;
+pauseBtn.onclick = togglePause;
+
+resetGame();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
