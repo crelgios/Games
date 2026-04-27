@@ -1,150 +1,310 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tennis Game - Mobile & Desktop</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Neon Tennis - Corrected</title>
 <style>
-  body {
+  :root { --court:#168b3a; --line:#ffffff; --panel:rgba(0,0,0,.55); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
     margin: 0;
+    width: 100%;
+    height: 100%;
     overflow: hidden;
-    background: #228B22;
-    font-family: sans-serif;
+    background: radial-gradient(circle at center, #2fbf61 0%, #12692f 60%, #073314 100%);
+    font-family: Arial, Helvetica, sans-serif;
+    color: white;
+    touch-action: none;
+    user-select: none;
   }
+  #wrap { position: fixed; inset: 0; display: grid; place-items: center; padding: 10px; }
   canvas {
     display: block;
-    margin: 0 auto;
-    background: #228B22;
-    border: 5px solid #fff;
-    touch-action: none; /* prevent scrolling on mobile */
+    width: min(96vw, calc(96vh * 1.5));
+    height: min(64vw, 96vh);
+    max-width: 960px;
+    max-height: 640px;
+    background: #168b3a;
+    border: 4px solid #fff;
+    border-radius: 18px;
+    box-shadow: 0 0 30px rgba(255,255,255,.25), inset 0 0 35px rgba(0,0,0,.25);
+    touch-action: none;
   }
-  .score {
-    position: absolute;
-    color: #fff;
-    font-size: 24px;
-    top: 10px;
+  .hud {
+    position: fixed;
+    top: 14px;
     left: 50%;
     transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 14px;
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 999px;
+    backdrop-filter: blur(8px);
+    font-size: clamp(14px, 3vw, 20px);
+    font-weight: 700;
+    z-index: 3;
   }
+  button {
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-weight: 800;
+    color: #063214;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0,0,0,.25);
+  }
+  #pauseBtn { padding: 7px 12px; font-size: 14px; }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(0,0,0,.55);
+    z-index: 5;
+    padding: 20px;
+  }
+  .card {
+    width: min(92vw, 440px);
+    text-align: center;
+    background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.07));
+    border: 1px solid rgba(255,255,255,.3);
+    border-radius: 24px;
+    padding: 24px;
+    box-shadow: 0 20px 55px rgba(0,0,0,.45);
+    backdrop-filter: blur(12px);
+  }
+  h1 { margin: 0 0 8px; font-size: 36px; }
+  p { margin: 8px 0 18px; line-height: 1.4; opacity: .9; }
+  .hide { display: none; }
+  .tip { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); opacity: .8; font-size: 13px; z-index: 2; text-align:center; }
 </style>
 </head>
 <body>
-<canvas id="gameCanvas" width="600" height="400"></canvas>
-<div class="score" id="score">Player: 0 | CPU: 0</div>
+<div id="wrap"><canvas id="gameCanvas"></canvas></div>
+<div class="hud">
+  <span id="score">Player: 0 | CPU: 0</span>
+  <span id="best">Best: 0</span>
+  <button id="pauseBtn">Pause</button>
+</div>
+<div class="tip">Mobile: drag up/down anywhere on court. Desktop: mouse / W-S / ↑↓</div>
+
+<div class="overlay" id="menu">
+  <div class="card">
+    <h1>🎾 Neon Tennis</h1>
+    <p>First to 7 wins. Drag your thumb up/down to control the left paddle.</p>
+    <button id="startBtn">Start Game</button>
+  </div>
+</div>
+
+<div class="overlay hide" id="gameOver">
+  <div class="card">
+    <h1 id="resultTitle">Game Over</h1>
+    <p id="resultText"></p>
+    <button id="restartBtn">Play Again</button>
+  </div>
+</div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const bestEl = document.getElementById('best');
+const menu = document.getElementById('menu');
+const gameOver = document.getElementById('gameOver');
+const resultTitle = document.getElementById('resultTitle');
+const resultText = document.getElementById('resultText');
+const pauseBtn = document.getElementById('pauseBtn');
 
-// Player and CPU paddles
-const paddleWidth = 10, paddleHeight = 80;
-const player = { x: 20, y: canvas.height/2 - 40, width: paddleWidth, height: paddleHeight, speed: 6 };
-const cpu = { x: canvas.width - 30, y: canvas.height/2 - 40, width: paddleWidth, height: paddleHeight, speed: 4 };
-
-// Ball
-const ball = { x: canvas.width/2, y: canvas.height/2, radius: 8, speedX: 5, speedY: 3 };
-
-// Score
+const BASE_W = 900;
+const BASE_H = 600;
+let scale = 1;
+let state = 'menu';
+let lastTime = 0;
+let particles = [];
+let keys = { up:false, down:false };
+let pointerActive = false;
+let pointerY = BASE_H / 2;
 let playerScore = 0;
 let cpuScore = 0;
+let bestScore = Number(localStorage.getItem('tennisBestScore') || 0);
 
-// Controls
-let pointerY = null; // stores touch or mouse Y
+const paddle = { w: 16, h: 110 };
+const player = { x: 35, y: BASE_H/2 - paddle.h/2, targetY: BASE_H/2 - paddle.h/2, speed: 850 };
+const cpu = { x: BASE_W - 51, y: BASE_H/2 - paddle.h/2, speed: 520 };
+const ball = { x: BASE_W/2, y: BASE_H/2, r: 12, vx: 430, vy: 220, speedUp: 1.035 };
 
-// Mobile touch
-canvas.addEventListener('touchstart', e => {
-  pointerY = e.touches[0].clientY - canvas.getBoundingClientRect().top;
-});
-canvas.addEventListener('touchmove', e => {
-  pointerY = e.touches[0].clientY - canvas.getBoundingClientRect().top;
-});
-canvas.addEventListener('touchend', e => pointerY = null);
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = Math.min(window.innerWidth - 20, (window.innerHeight - 20) * 1.5, 960);
+  const cssH = cssW / 1.5;
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.width = Math.round(BASE_W * dpr);
+  canvas.height = Math.round(BASE_H * dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  scale = cssH / BASE_H;
+}
+window.addEventListener('resize', resize);
+resize();
 
-// Desktop mouse
-canvas.addEventListener('mousedown', e => {
-  pointerY = e.clientY - canvas.getBoundingClientRect().top;
-});
-canvas.addEventListener('mousemove', e => {
-  if(pointerY !== null) pointerY = e.clientY - canvas.getBoundingClientRect().top;
-});
-canvas.addEventListener('mouseup', e => pointerY = null);
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function screenToGameY(clientY){ return (clientY - canvas.getBoundingClientRect().top) / scale; }
 
-// Game loop
-function update() {
-  // Move player
-  if(pointerY !== null) {
-    player.y = pointerY - player.height/2;
-    if(player.y < 0) player.y = 0;
-    if(player.y + player.height > canvas.height) player.y = canvas.height - player.height;
-  }
-
-  // Move CPU
-  if(ball.y < cpu.y + cpu.height/2) cpu.y -= cpu.speed;
-  else cpu.y += cpu.speed;
-  if(cpu.y < 0) cpu.y = 0;
-  if(cpu.y + cpu.height > canvas.height) cpu.y = canvas.height - cpu.height;
-
-  // Move ball
-  ball.x += ball.speedX;
-  ball.y += ball.speedY;
-
-  // Ball collision with top/bottom
-  if(ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) ball.speedY *= -1;
-
-  // Ball collision with paddles
-  if(ball.x - ball.radius < player.x + player.width &&
-     ball.y > player.y && ball.y < player.y + player.height) {
-    ball.speedX *= -1;
-    ball.x = player.x + player.width + ball.radius;
-  }
-  if(ball.x + ball.radius > cpu.x &&
-     ball.y > cpu.y && ball.y < cpu.y + cpu.height) {
-    ball.speedX *= -1;
-    ball.x = cpu.x - ball.radius;
-  }
-
-  // Score
-  if(ball.x < 0) { cpuScore++; resetBall(); }
-  if(ball.x > canvas.width) { playerScore++; resetBall(); }
-
-  draw();
-  requestAnimationFrame(update);
+function resetBall(direction = Math.random() < .5 ? -1 : 1){
+  ball.x = BASE_W/2; ball.y = BASE_H/2;
+  ball.vx = direction * 430;
+  ball.vy = (Math.random() * 260 + 120) * (Math.random() < .5 ? -1 : 1);
+}
+function resetGame(){
+  playerScore = 0; cpuScore = 0;
+  player.y = player.targetY = BASE_H/2 - paddle.h/2;
+  cpu.y = BASE_H/2 - paddle.h/2;
+  particles = [];
+  resetBall();
+  updateHud();
+}
+function updateHud(){
+  scoreEl.textContent = `Player: ${playerScore} | CPU: ${cpuScore}`;
+  bestEl.textContent = `Best: ${bestScore}`;
+}
+function startGame(){ resetGame(); state = 'playing'; menu.classList.add('hide'); gameOver.classList.add('hide'); pauseBtn.textContent='Pause'; }
+function endGame(won){
+  state = 'over';
+  bestScore = Math.max(bestScore, playerScore);
+  localStorage.setItem('tennisBestScore', bestScore);
+  updateHud();
+  resultTitle.textContent = won ? 'You Win! 🏆' : 'CPU Wins';
+  resultText.textContent = `Final Score: Player ${playerScore} - CPU ${cpuScore}`;
+  gameOver.classList.remove('hide');
 }
 
-// Reset ball
-function resetBall() {
-  ball.x = canvas.width/2;
-  ball.y = canvas.height/2;
-  ball.speedX = -ball.speedX;
-  ball.speedY = 3 * (Math.random() > 0.5 ? 1 : -1);
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('restartBtn').addEventListener('click', startGame);
+pauseBtn.addEventListener('click', () => {
+  if(state === 'playing'){ state = 'paused'; pauseBtn.textContent='Resume'; }
+  else if(state === 'paused'){ state = 'playing'; pauseBtn.textContent='Pause'; lastTime = performance.now(); }
+});
+
+function pointerStart(e){
+  e.preventDefault(); pointerActive = true; pointerY = screenToGameY(e.clientY || e.touches?.[0]?.clientY); 
+  if(state === 'menu') startGame();
+}
+function pointerMove(e){
+  if(!pointerActive) return;
+  e.preventDefault(); pointerY = screenToGameY(e.clientY || e.touches?.[0]?.clientY);
+}
+function pointerEnd(e){ e.preventDefault(); pointerActive = false; }
+canvas.addEventListener('pointerdown', pointerStart);
+canvas.addEventListener('pointermove', pointerMove);
+canvas.addEventListener('pointerup', pointerEnd);
+canvas.addEventListener('pointercancel', pointerEnd);
+window.addEventListener('keydown', e => {
+  if(e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') keys.up = true;
+  if(e.key === 'ArrowDown' || e.key.toLowerCase() === 's') keys.down = true;
+  if(e.code === 'Space') pauseBtn.click();
+});
+window.addEventListener('keyup', e => {
+  if(e.key === 'ArrowUp' || e.key.toLowerCase() === 'w') keys.up = false;
+  if(e.key === 'ArrowDown' || e.key.toLowerCase() === 's') keys.down = false;
+});
+
+function spawnHit(x,y,color){
+  for(let i=0;i<14;i++) particles.push({x,y,vx:(Math.random()-.5)*260,vy:(Math.random()-.5)*260,life:.35,color});
+}
+function rectBallHit(px, py, pw, ph){
+  return ball.x + ball.r > px && ball.x - ball.r < px + pw && ball.y + ball.r > py && ball.y - ball.r < py + ph;
+}
+function hitPaddle(p, isPlayer){
+  const center = p.y + paddle.h / 2;
+  const hit = (ball.y - center) / (paddle.h / 2);
+  const dir = isPlayer ? 1 : -1;
+  const speed = Math.min(850, Math.hypot(ball.vx, ball.vy) * ball.speedUp);
+  ball.vx = dir * speed;
+  ball.vy = hit * 470;
+  ball.x = isPlayer ? p.x + paddle.w + ball.r : p.x - ball.r;
+  spawnHit(ball.x, ball.y, isPlayer ? '#9ffcff' : '#ffd36c');
 }
 
-// Draw everything
-function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+function update(dt){
+  if(pointerActive){
+    player.targetY = clamp(pointerY - paddle.h/2, 0, BASE_H - paddle.h);
+    const diff = player.targetY - player.y;
+    player.y += clamp(diff, -player.speed*dt, player.speed*dt);
+  } else {
+    const dir = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+    player.y += dir * player.speed * dt;
+  }
+  player.y = clamp(player.y, 0, BASE_H - paddle.h);
 
-  // Draw middle line
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(canvas.width/2 - 2, 0, 4, canvas.height);
+  const cpuCenter = cpu.y + paddle.h/2;
+  const cpuMistake = Math.sin(performance.now()/900) * 18;
+  if(ball.y + cpuMistake < cpuCenter - 10) cpu.y -= cpu.speed * dt;
+  if(ball.y + cpuMistake > cpuCenter + 10) cpu.y += cpu.speed * dt;
+  cpu.y = clamp(cpu.y, 0, BASE_H - paddle.h);
 
-  // Draw paddles
-  ctx.fillStyle = 'white';
-  ctx.fillRect(player.x, player.y, player.width, player.height);
-  ctx.fillRect(cpu.x, cpu.y, cpu.width, cpu.height);
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+  if(ball.y - ball.r < 0){ ball.y = ball.r; ball.vy = Math.abs(ball.vy); spawnHit(ball.x, ball.y, '#fff'); }
+  if(ball.y + ball.r > BASE_H){ ball.y = BASE_H - ball.r; ball.vy = -Math.abs(ball.vy); spawnHit(ball.x, ball.y, '#fff'); }
 
-  // Draw ball
+  if(ball.vx < 0 && rectBallHit(player.x, player.y, paddle.w, paddle.h)) hitPaddle(player, true);
+  if(ball.vx > 0 && rectBallHit(cpu.x, cpu.y, paddle.w, paddle.h)) hitPaddle(cpu, false);
+
+  if(ball.x < -30){ cpuScore++; updateHud(); resetBall(1); }
+  if(ball.x > BASE_W + 30){ playerScore++; updateHud(); resetBall(-1); }
+  if(playerScore >= 7 || cpuScore >= 7) endGame(playerScore >= 7);
+
+  particles = particles.filter(p => (p.life -= dt) > 0);
+  particles.forEach(p => { p.x += p.vx*dt; p.y += p.vy*dt; });
+}
+
+function roundedRect(x,y,w,h,r){
   ctx.beginPath();
-  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
-  ctx.fillStyle = 'white';
-  ctx.fill();
-  ctx.closePath();
-
-  // Update score
-  document.getElementById('score').textContent = `Player: ${playerScore} | CPU: ${cpuScore}`;
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
 }
+function draw(){
+  ctx.clearRect(0,0,BASE_W,BASE_H);
+  const grad = ctx.createLinearGradient(0,0,0,BASE_H);
+  grad.addColorStop(0,'#1fb653'); grad.addColorStop(.5,'#168b3a'); grad.addColorStop(1,'#0f642a');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,BASE_W,BASE_H);
 
-// Start
-update();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 5;
+  ctx.strokeRect(35,35,BASE_W-70,BASE_H-70);
+  ctx.beginPath(); ctx.moveTo(BASE_W/2,35); ctx.lineTo(BASE_W/2,BASE_H-35); ctx.stroke();
+  ctx.beginPath(); ctx.arc(BASE_W/2,BASE_H/2,70,0,Math.PI*2); ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.stroke();
+  ctx.setLineDash([12,14]); ctx.beginPath(); ctx.moveTo(BASE_W/2,35); ctx.lineTo(BASE_W/2,BASE_H-35); ctx.stroke(); ctx.setLineDash([]);
+
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = '#9ffcff'; ctx.fillStyle = '#fff'; roundedRect(player.x, player.y, paddle.w, paddle.h, 9); ctx.fill();
+  ctx.shadowColor = '#ffd36c'; roundedRect(cpu.x, cpu.y, paddle.w, paddle.h, 9); ctx.fill();
+  ctx.shadowColor = '#ffffff'; ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  particles.forEach(p => { ctx.globalAlpha = Math.max(0,p.life/.35); ctx.fillStyle = p.color; ctx.fillRect(p.x,p.y,4,4); ctx.globalAlpha = 1; });
+
+  if(pointerActive){
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(player.x + 8, pointerY, 26, 0, Math.PI*2); ctx.stroke();
+  }
+  if(state === 'paused'){
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0,0,BASE_W,BASE_H);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 54px Arial'; ctx.textAlign='center'; ctx.fillText('PAUSED', BASE_W/2, BASE_H/2);
+  }
+}
+function loop(now){
+  const dt = Math.min((now - lastTime) / 1000 || 0, 0.033);
+  lastTime = now;
+  if(state === 'playing') update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+updateHud();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
