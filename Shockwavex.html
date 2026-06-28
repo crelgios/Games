@@ -3,19 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <title>ShockwaveX - Neon Boss Shooter</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <style>
     :root{
       --cyan:#00f5ff; --pink:#ff2bd6; --yellow:#ffe66d; --green:#47ff88; --red:#ff4b5c;
       --glass: rgba(6, 14, 32, .62); --line: rgba(0,245,255,.28);
     }
     *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
-    body{ margin:0; overflow:hidden; background:#02030a; touch-action:none; font-family: Arial, Helvetica, sans-serif; color:white; }
-    canvas{ display:block; transition: transform .05s; }
+    html, body{ width:100%; height:100%; overflow:hidden; overscroll-behavior:none; -webkit-user-select:none; user-select:none; }
+    body{ margin:0; position:fixed; inset:0; background:#02030a; touch-action:none; font-family: Arial, Helvetica, sans-serif; color:white; }
+    canvas{ position:fixed; inset:0; display:block; transition: transform .05s; touch-action:none; }
     .overlay{
       position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
       background: radial-gradient(circle at center, rgba(0,245,255,.12), rgba(2,3,10,.92) 58%, #000 100%);
-      z-index:10; padding:20px;
+      z-index:10; padding:calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
     }
     .panel{
       width:min(620px, 94vw); border:1px solid var(--line); border-radius:28px; padding:28px;
@@ -28,7 +29,7 @@
     .subtitle{ margin:8px 0 20px; color:#dffcff; font-size:16px; line-height:1.5; }
     .btnrow{ display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:18px; }
     button{
-      border:0; border-radius:999px; padding:13px 22px; font-weight:800; color:#021018; cursor:pointer; font-size:15px;
+      border:0; border-radius:999px; padding:13px 22px; font-weight:800; color:#021018; cursor:pointer; font-size:15px; touch-action:manipulation; -webkit-user-select:none; user-select:none;
       background:linear-gradient(135deg, var(--cyan), #7affff); box-shadow:0 0 22px rgba(0,245,255,.35);
     }
     button.secondary{ background:linear-gradient(135deg, var(--pink), #ff8af0); color:white; box-shadow:0 0 22px rgba(255,43,214,.3); }
@@ -53,7 +54,7 @@
   </style>
 </head>
 <body>
-  <audio id="bgMusic" src="background.mp3" loop></audio>
+  <audio id="bgMusic" src="background.mp3" loop preload="auto" playsinline></audio>
   <canvas id="game"></canvas>
 
   <div class="hud" id="hud">
@@ -116,17 +117,38 @@ const pauseOverlay = document.getElementById('pauseOverlay');
 const gameOverOverlay = document.getElementById('gameOverOverlay');
 
 let W=0, H=0, DPR=1;
+function getViewportSize(){
+  const vv = window.visualViewport;
+  return {
+    w: Math.max(1, Math.round((vv && vv.width) || window.innerWidth || document.documentElement.clientWidth || 320)),
+    h: Math.max(1, Math.round((vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 568))
+  };
+}
 function resize(){
   DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth; H = window.innerHeight;
+  const size = getViewportSize();
+  W = size.w; H = size.h;
   canvas.width = Math.floor(W * DPR); canvas.height = Math.floor(H * DPR);
   canvas.style.width = W+'px'; canvas.style.height = H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  player.x = Math.min(player.x || W/2, W); player.y = Math.min(player.y || H/2, H);
+  player.x = Math.max(player.radius, Math.min(player.x || W/2, W-player.radius));
+  player.y = Math.max(player.radius, Math.min(player.y || H/2, H-player.radius));
   player.targetX = player.x; player.targetY = player.y;
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 250));
+if(window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 
+const storage = (()=>{
+  try{
+    const testKey='__shockwavex_storage_test__';
+    window.localStorage.setItem(testKey,'1'); window.localStorage.removeItem(testKey);
+    return window.localStorage;
+  }catch(err){
+    const memoryStore = {};
+    return { getItem:k=>Object.prototype.hasOwnProperty.call(memoryStore,k)?memoryStore[k]:null, setItem:(k,v)=>{ memoryStore[k]=String(v); }, removeItem:k=>{ delete memoryStore[k]; } };
+  }
+})();
 const bgMusic = document.getElementById('bgMusic'); bgMusic.volume=.25;
 const sounds = { shoot:new Audio('shoot.mp3'), explode:new Audio('explosion.mp3'), power:new Audio('powerup.mp3') };
 Object.values(sounds).forEach(s=>{ s.volume=.38; s.preload='auto'; });
@@ -135,7 +157,7 @@ function startMusic(){ bgMusic.play().catch(()=>{}); }
 
 const player = { x:0,y:0,targetX:0,targetY:0,radius:12,speed:8,shield:false };
 let bullets=[], enemies=[], particles=[], powerUps=[], stars=[];
-let score=0, lives=3, highScore=Number(localStorage.getItem('shockwaveHighScore')||0), difficultyLevel=1;
+let score=0, lives=3, highScore=Number(storage.getItem('shockwaveHighScore')||0), difficultyLevel=1;
 let gameState='menu', fireAngle=0, spreadShot=false, explosionNext=false, autoFire=false, lastShot=0, fireDelay=120;
 let spawnTimer=0, powerTimer=0, boss=null, shake=0, flash=0, lastTime=0;
 let touchControl = { active:false, id:null, startX:0, startY:0, x:0, y:0, vx:0, vy:0, strength:0 };
@@ -151,28 +173,42 @@ function resetGame(){
   updateHud(); bossBarWrap.style.display='none';
 }
 function updateHud(){ scoreText.textContent=score; highText.textContent=highScore; livesText.textContent=lives; levelText.textContent=difficultyLevel; }
-function getScores(){ return JSON.parse(localStorage.getItem('shockwaveLeaderboard') || '[]'); }
+function getScores(){ try{ return JSON.parse(storage.getItem('shockwaveLeaderboard') || '[]'); }catch(err){ return []; } }
 function saveScore(value){
-  highScore = Math.max(highScore, value); localStorage.setItem('shockwaveHighScore', highScore);
+  highScore = Math.max(highScore, value); storage.setItem('shockwaveHighScore', highScore);
   const scores = getScores(); scores.push({score:value, date:new Date().toLocaleDateString()});
-  scores.sort((a,b)=>b.score-a.score); localStorage.setItem('shockwaveLeaderboard', JSON.stringify(scores.slice(0,5)));
+  scores.sort((a,b)=>b.score-a.score); storage.setItem('shockwaveLeaderboard', JSON.stringify(scores.slice(0,5)));
 }
 function renderScores(el){
   const scores=getScores();
   el.innerHTML='<strong>Local Leaderboard</strong>' + (scores.length ? scores.map((s,i)=>`<div><span>#${i+1} ${s.date}</span><b>${s.score}</b></div>`).join('') : '<div><span>No scores yet</span><b>0</b></div>');
 }
 function showMenu(){ gameState='menu'; menuOverlay.classList.remove('hidden'); pauseOverlay.classList.add('hidden'); gameOverOverlay.classList.add('hidden'); pauseBtn.style.display='none'; bossBarWrap.style.display='none'; renderScores(document.getElementById('menuScores')); }
-function startGame(){ resetGame(); startMusic(); gameState='playing'; menuOverlay.classList.add('hidden'); gameOverOverlay.classList.add('hidden'); pauseOverlay.classList.add('hidden'); pauseBtn.style.display='block'; }
+function startGame(){ resetGame(); startMusic(); stopTouchControl(); resize(); gameState='playing'; menuOverlay.classList.add('hidden'); gameOverOverlay.classList.add('hidden'); pauseOverlay.classList.add('hidden'); pauseBtn.textContent='Pause'; pauseBtn.style.display='block'; }
 function togglePause(){ if(gameState==='playing'){ gameState='paused'; pauseOverlay.classList.remove('hidden'); pauseBtn.textContent='Resume'; } else if(gameState==='paused'){ gameState='playing'; pauseOverlay.classList.add('hidden'); pauseBtn.textContent='Pause'; } }
 function gameOver(){ gameState='gameover'; saveScore(score); updateHud(); document.getElementById('finalText').textContent=`Final Score: ${score}  •  Best: ${highScore}`; renderScores(document.getElementById('gameOverScores')); gameOverOverlay.classList.remove('hidden'); pauseBtn.style.display='none'; bossBarWrap.style.display='none'; }
 
-document.getElementById('startBtn').onclick=startGame;
-document.getElementById('playAgainBtn').onclick=startGame;
-document.getElementById('backMenuBtn').onclick=showMenu;
-document.getElementById('resumeBtn').onclick=togglePause;
-document.getElementById('restartFromPauseBtn').onclick=startGame;
-pauseBtn.onclick=togglePause;
-document.getElementById('howBtn').onclick=()=>alert('Mobile: touch anywhere, then drag your thumb like a joystick. Drag right = player keeps moving right. Release to stop. Desktop: move mouse to control/aim. Collect power-ups. Every 50 points brings a boss. Press P or Esc to pause.');
+function bindTap(el, fn){
+  if(typeof el === 'string') el = document.getElementById(el);
+  let lastTouch = 0;
+  el.addEventListener('touchend', e=>{
+    e.preventDefault();
+    e.stopPropagation();
+    lastTouch = Date.now();
+    fn(e);
+  }, {passive:false});
+  el.addEventListener('click', e=>{
+    if(Date.now() - lastTouch < 700){ e.preventDefault(); return; }
+    fn(e);
+  });
+}
+bindTap('startBtn', startGame);
+bindTap('playAgainBtn', startGame);
+bindTap('backMenuBtn', showMenu);
+bindTap('resumeBtn', togglePause);
+bindTap('restartFromPauseBtn', startGame);
+bindTap(pauseBtn, togglePause);
+bindTap('howBtn', ()=>alert('Mobile: touch the game area, then drag your thumb like a joystick. Drag right = player moves right and shoots right. Release to stop. Desktop: move mouse to control/aim. Collect power-ups. Every 50 points brings a boss. Press P or Esc to pause.'));
 window.addEventListener('keydown',e=>{ if(e.key==='p'||e.key==='P'||e.key==='Escape') togglePause(); });
 
 function setTarget(x,y){
@@ -181,8 +217,11 @@ function setTarget(x,y){
   player.targetX=x; player.targetY=y;
   fireAngle=Math.atan2(y-player.y, x-player.x);
 }
+function closestSafe(target, selector){
+  return target && target.nodeType === 1 && typeof target.closest === 'function' ? target.closest(selector) : null;
+}
 function isGameTouchAllowed(target){
-  return gameState==='playing' && !target.closest('button') && !target.closest('.overlay');
+  return gameState==='playing' && !closestSafe(target,'button') && !closestSafe(target,'.overlay');
 }
 function startTouchControl(e){
   isTouchDevice = true;
@@ -223,22 +262,56 @@ function stopTouchControl(){
   touchControl.active=false; touchControl.id=null; touchControl.vx=0; touchControl.vy=0; touchControl.strength=0;
 }
 canvas.addEventListener('mousemove', e=>{ if(gameState==='playing') setTarget(e.clientX,e.clientY); });
+const hasTouchEvents = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
 window.addEventListener('pointerdown', e=>{
-  if(e.pointerType === 'touch' && isGameTouchAllowed(e.target)){
+  // Some iOS Safari versions fire both PointerEvent and TouchEvent. On touch devices,
+  // the TouchEvent handlers below are the source of truth to avoid double-start bugs.
+  if(e.pointerType === 'touch' && !hasTouchEvents && isGameTouchAllowed(e.target)){
     e.preventDefault(); startMusic(); startTouchControl(e);
     try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
   }
 }, {passive:false});
 window.addEventListener('pointermove', e=>{
-  if(e.pointerType === 'touch' && touchControl.active && e.pointerId === touchControl.id){
+  if(e.pointerType === 'touch' && !hasTouchEvents && touchControl.active && e.pointerId === touchControl.id){
     e.preventDefault(); updateTouchControl(e);
   }
 }, {passive:false});
-window.addEventListener('pointerup', e=>{ if(e.pointerId === touchControl.id) stopTouchControl(); });
-window.addEventListener('pointercancel', e=>{ if(e.pointerId === touchControl.id) stopTouchControl(); });
-window.addEventListener('touchstart', e=>{ if(gameState==='playing' && e.touches.length){ const t=e.touches[0]; e.preventDefault(); startMusic(); startTouchControl({ pointerId:'touch', clientX:t.clientX, clientY:t.clientY }); } }, {passive:false});
-window.addEventListener('touchmove', e=>{ if(touchControl.active && e.touches.length){ const t=e.touches[0]; e.preventDefault(); updateTouchControl({ pointerId:'touch', clientX:t.clientX, clientY:t.clientY }); } }, {passive:false});
-window.addEventListener('touchend', e=>{ e.preventDefault(); stopTouchControl(); }, {passive:false});
+window.addEventListener('pointerup', e=>{ if(!hasTouchEvents && e.pointerId === touchControl.id) stopTouchControl(); });
+window.addEventListener('pointercancel', e=>{ if(!hasTouchEvents && e.pointerId === touchControl.id) stopTouchControl(); });
+function findTouch(list, id){
+  for(let i=0;i<list.length;i++){ if(list[i].identifier === id) return list[i]; }
+  return null;
+}
+window.addEventListener('touchstart', e=>{
+  if(gameState==='playing' && e.changedTouches.length && isGameTouchAllowed(e.target)){
+    const t=e.changedTouches[0];
+    e.preventDefault();
+    startMusic();
+    startTouchControl({ pointerId:t.identifier, clientX:t.clientX, clientY:t.clientY });
+  }
+}, {passive:false});
+window.addEventListener('touchmove', e=>{
+  if(!touchControl.active) return;
+  const t = findTouch(e.touches, touchControl.id) || findTouch(e.changedTouches, touchControl.id);
+  if(t){
+    e.preventDefault();
+    updateTouchControl({ pointerId:t.identifier, clientX:t.clientX, clientY:t.clientY });
+  }
+}, {passive:false});
+window.addEventListener('touchend', e=>{
+  if(!touchControl.active) return;
+  if(findTouch(e.changedTouches, touchControl.id)){
+    e.preventDefault();
+    stopTouchControl();
+  }
+}, {passive:false});
+window.addEventListener('touchcancel', e=>{
+  if(!touchControl.active) return;
+  if(findTouch(e.changedTouches, touchControl.id)){
+    e.preventDefault();
+    stopTouchControl();
+  }
+}, {passive:false});
 
 function shoot(now){
   if(now-lastShot<fireDelay) return; lastShot=now;
